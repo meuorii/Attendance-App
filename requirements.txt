@@ -1,0 +1,38 @@
+# === Core Deep Learning & Face Recognition ===
+torch==2.3.1
+torchvision==0.18.1
+insightface==0.7.3
+opencv-python==4.11.0.86
+numpy==1.26.4
+scipy==1.15.3
+pillow==11.3.0
+timm==1.0.9
+
+# === Flask Backend Integration ===
+flask==3.0.3
+flask-cors==4.0.1
+flask-jwt-extended==4.6.0
+flask-limiter==3.8.0
+
+# === Database (MongoDB) ===
+pymongo==4.10.1
+bson==0.5.10
+
+# === Async & Threading Utilities ===
+requests==2.32.3
+python-dateutil==2.9.0.post0
+tqdm==4.67.1
+
+# === Optional: Image / ML Preprocessing ===
+scikit-image==0.25.2
+albumentations==2.0.8
+prettytable==3.16.0
+
+# === Optional: For ONNX compatibility ===
+onnx==1.19.1
+onnxruntime==1.19.0
+
+# === Utility Packages ===
+easydict==1.13
+pydantic==2.12.3
+PyYAML==6.0.2

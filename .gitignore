@@ -1,0 +1,69 @@
+# ======================================
+# 🐍 Python & Virtual Environment
+# ======================================
+venv/
+env/
+ENV/
+.venv/
+.env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore model files
+models/*.pth
+models/*.onnx
+
+# ======================================
+# 📦 Dependency & Build Artifacts
+# ======================================
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# ======================================
+# 🧪 Testing & Coverage
+# ======================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+.cache/
+
+# ======================================
+# 🪄 IDE / Editor Settings
+# ======================================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ======================================
+# 🔐 Environment & Secrets
+# ======================================
+.env
+.env.local
+.env.*.local
+config.json
+secrets.json
+
+# ======================================
+# 🧰 Logs & OS Files
+# ======================================
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# ======================================
+# 🚀 PyInstaller / Executables
+# ======================================
+*.spec
+dist/
+*.exe
