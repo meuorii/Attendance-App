@@ -146,6 +146,7 @@ torch.set_num_threads(4)
 # Init InsightFace (fixed for both EXE and DEV)
 # -----------------------------
 import sys, os
+from insightface.app import FaceAnalysis
 
 cuda_ok = False
 providers = ["CPUExecutionProvider"]
@@ -163,12 +164,19 @@ else:
 
 print(f"📦 Using InsightFace model directory: {model_dir}")
 
-# Initialize InsightFace
-face_app = FaceAnalysis(name="buffalo_l", providers=providers)
-face_app.prepare(ctx_id=ctx_id, det_size=(320, 320), root=model_dir)
+# ✅ Fix: Use environment variable instead of unsupported `root` arg
+os.environ["INSIGHTFACE_HOME"] = model_dir
 
-# Debug: confirm models loaded
+# Initialize InsightFace safely (0.7.x compatible)
 try:
+    face_app = FaceAnalysis(name="buffalo_l", providers=providers)
+    face_app.prepare(ctx_id=ctx_id, det_size=(320, 320))
+    print("✅ InsightFace models loaded:", list(face_app.models.keys()))
+except TypeError:
+    # Fallback for newer versions (0.9+)
+    print("⚠️ Retrying with new InsightFace API (root parameter supported)...")
+    face_app = FaceAnalysis(name="buffalo_l", providers=providers)
+    face_app.prepare(ctx_id=ctx_id, det_size=(320, 320), root=model_dir)
     print("✅ InsightFace models loaded:", list(face_app.models.keys()))
 except Exception as e:
     print("❌ InsightFace model load failed:", e)
