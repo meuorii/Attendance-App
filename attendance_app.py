@@ -521,8 +521,11 @@ def run_attendance_session(class_meta) -> bool:
     def camera_thread():
         while session_active and not user_quit_app:
             ok, f = cap.read()
-            if ok:
-                frame_queue.append(f)
+            if not ok or f is None:
+                print("⚠️ Camera read failed, retrying...")
+                time.sleep(0.1)
+                continue
+            frame_queue.append(f)
 
     threading.Thread(target=camera_thread, daemon=True).start()
 
@@ -535,6 +538,11 @@ def run_attendance_session(class_meta) -> bool:
             continue
 
         frame = frame_queue.popleft()
+
+        if frame is None or not hasattr(frame, "shape"):
+            print("⚠️ Invalid frame detected — skipping.")
+            continue
+        
         H, W = frame.shape[:2]
         frame_count += 1
 
