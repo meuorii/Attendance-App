@@ -3,12 +3,19 @@ import importlib
 import subprocess
 import sys
 
+# Detect if running as a compiled .exe (PyInstaller frozen app)
+IS_FROZEN = getattr(sys, 'frozen', False)
+
 def safe_import(pkg, version=None):
-    """Safely import a package or install it if missing."""
+    """Safely import a package or install it if missing (only in dev mode)."""
     try:
         importlib.import_module(pkg)
         return True
     except ImportError:
+        if IS_FROZEN:
+            # 🚫 Don't try to install dependencies in compiled .exe
+            print(f"⚠️ Skipping install for {pkg} (frozen build).")
+            return False
         try:
             pkg_str = f"{pkg}=={version}" if version else pkg
             print(f"📦 Installing missing dependency: {pkg_str}")
@@ -32,25 +39,34 @@ DEPENDENCIES = {
     "python-dateutil": None
 }
 
+
 # ===============================================================
-# ✅ Auto-install and verify
+# ✅ Auto-install (only when NOT compiled)
 # ===============================================================
-for pkg, ver in DEPENDENCIES.items():
-    ok = safe_import(pkg, ver)
-    if not ok:
-        print(f"⚠️ Warning: {pkg} may not be installed correctly.\n")
+if not IS_FROZEN:
+    print("🧩 Development mode — verifying dependencies...")
+    for pkg, ver in DEPENDENCIES.items():
+        ok = safe_import(pkg, ver)
+        if not ok:
+            print(f"⚠️ Warning: {pkg} may not be installed correctly.\n")
+else:
+    print("🚀 Running compiled build — skipping dependency installation.")
+
 
 # ---------------------------------------------------------------
-# 🧹 Extra compatibility fix (force re-sync numpy+scipy if mismatch)
+# 🧹 Compatibility check (NumPy/SciPy version sanity)
 # ---------------------------------------------------------------
 try:
     import numpy, scipy
-    if numpy.__version__.startswith("2.") or "1.15" not in scipy.__version__:
-        print("🔄 Fixing potential NumPy/SciPy ABI mismatch...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", "numpy==1.26.4", "scipy==1.15.3"])
+    if not IS_FROZEN:
+        if numpy.__version__.startswith("2.") or "1.15" not in scipy.__version__:
+            print("🔄 Fixing potential NumPy/SciPy ABI mismatch...")
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "--force-reinstall",
+                "numpy==1.26.4", "scipy==1.15.3"
+            ])
 except Exception as e:
     print(f"⚠️ Compatibility check failed: {e}")
-
 
 import cv2
 import time
@@ -65,6 +81,7 @@ from insightface.app import FaceAnalysis
 from datetime import datetime, timedelta, timezone
 from dateutil import parser
 from typing import Dict, Tuple, Optional, List
+
 
 from utils.anti_spoofing import check_real_or_spoof
 
@@ -111,6 +128,10 @@ session_active  = False
 user_quit_app   = False
 session_skipped = False
 
+# ⚙️ Limit threading to prevent CPU overload or freeze
+cv2.setNumThreads(1)
+torch.set_num_threads(4)
+
 # -----------------------------
 # Init InsightFace
 # -----------------------------
@@ -121,8 +142,37 @@ print("🧠 Running on CPU mode (real-time smooth detection)")
 
 torch.set_num_threads(4)
 
+# -----------------------------
+# Init InsightFace (fixed for both EXE and DEV)
+# -----------------------------
+import sys, os
+
+cuda_ok = False
+providers = ["CPUExecutionProvider"]
+ctx_id = -1
+print("🧠 Running on CPU mode (real-time smooth detection)")
+
+# ✅ Detect if running as compiled EXE or normal Python
+if getattr(sys, 'frozen', False):
+    # When compiled: models are bundled in dist/insightface/models
+    base_path = sys._MEIPASS
+    model_dir = os.path.join(base_path, "insightface", "models", "buffalo_l")
+else:
+    # When running in your dev environment
+    model_dir = os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l")
+
+print(f"📦 Using InsightFace model directory: {model_dir}")
+
+# Initialize InsightFace
 face_app = FaceAnalysis(name="buffalo_l", providers=providers)
-face_app.prepare(ctx_id=ctx_id, det_size=(320, 320))
+face_app.prepare(ctx_id=ctx_id, det_size=(320, 320), root=model_dir)
+
+# Debug: confirm models loaded
+try:
+    print("✅ InsightFace models loaded:", list(face_app.models.keys()))
+except Exception as e:
+    print("❌ InsightFace model load failed:", e)
+
 
 def fetch_instructor_config(instructor_id: str):
     """Fetch instructor config from backend and save locally"""
@@ -456,7 +506,7 @@ def run_attendance_session(class_meta) -> bool:
     from collections import deque
     from concurrent.futures import ThreadPoolExecutor
 
-    frame_queue = deque(maxlen=5)
+    frame_queue = deque(maxlen=10)
     executor = ThreadPoolExecutor(max_workers=2)
     future_faces = None
 
@@ -630,7 +680,10 @@ def run_attendance_session(class_meta) -> bool:
                 # Downscale to reduce anti-spoof lag
                 dynamic_thresh = 0.65 if face_area < 35000 else AS_THRESHOLD
                 face_small = cv2.resize(face_img, (96, 96))
-                is_real, _, _ = check_real_or_spoof(face_small, threshold=dynamic_thresh, double_check=False)
+                if frame_count % 10 == 0:
+                    is_real, _, _ = check_real_or_spoof(face_small, threshold=dynamic_thresh, double_check=False)
+                else:
+                    is_real = True
                 gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
                 gray = cv2.equalizeHist(gray)
                 face_img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
