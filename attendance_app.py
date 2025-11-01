@@ -539,11 +539,6 @@ def run_attendance_session(class_meta) -> bool:
 
         frame = frame_queue.popleft()
 
-        if frame is None or not hasattr(frame, "shape"):
-            print("⚠️ Invalid frame detected — skipping.")
-            time.sleep(0.05)
-            continue
-
         H, W = frame.shape[:2]
         frame_count += 1
 
@@ -554,26 +549,36 @@ def run_attendance_session(class_meta) -> bool:
             fps = 0.9 * fps + 0.1 * (1.0 / dt)
         t_last_fps = now_perf
 
-        # Adaptive skip frames
-        SKIP_FRAMES = 1
+        # ---------------- Safe async detection ----------------
+        if frame is None or not hasattr(frame, "shape"):
+            print("⚠️ Invalid frame detected — skipping detection.")
+            time.sleep(0.05)
+            continue
 
-        # Async detection
-        if future_faces is None:
-            future_faces = executor.submit(face_app.get, frame.copy())
-
-       
-        if future_faces and future_faces.done():
+        def safe_detect(f):
+            """Wrapper to prevent NoneType crashes inside InsightFace."""
             try:
-                new_faces = future_faces.result()
-                if new_faces is not None:
-                    faces = new_faces
+                if f is None or not hasattr(f, "shape"):
+                    return []
+                res = face_app.get(f)
+                return res if res is not None else []
             except Exception as e:
-                print("⚠️ Face detection error:", e)
-                faces = None
+                print("⚠️ Face detection internal error:", e)
+                return []
 
-            # Re-submit only if frame is valid
+        if future_faces is None:
+            future_faces = executor.submit(safe_detect, frame.copy())
+
+        if future_faces and future_faces.done():
+            faces = []
+            try:
+                faces = future_faces.result() or []
+            except Exception as e:
+                print("⚠️ Face detection error (async):", e)
+                faces = []
+            # Submit next job
             if frame is not None and hasattr(frame, "shape"):
-                future_faces = executor.submit(face_app.get, frame.copy())
+                future_faces = executor.submit(safe_detect, frame.copy())
 
         # Build detections
         detections = []
