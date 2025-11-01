@@ -541,8 +541,9 @@ def run_attendance_session(class_meta) -> bool:
 
         if frame is None or not hasattr(frame, "shape"):
             print("⚠️ Invalid frame detected — skipping.")
+            time.sleep(0.05)
             continue
-        
+
         H, W = frame.shape[:2]
         frame_count += 1
 
@@ -570,7 +571,9 @@ def run_attendance_session(class_meta) -> bool:
                 print("⚠️ Face detection error:", e)
                 faces = None
 
-            future_faces = executor.submit(face_app.get, frame.copy())
+            # Re-submit only if frame is valid
+            if frame is not None and hasattr(frame, "shape"):
+                future_faces = executor.submit(face_app.get, frame.copy())
 
         # Build detections
         detections = []
