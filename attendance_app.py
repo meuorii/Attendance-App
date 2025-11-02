@@ -68,11 +68,24 @@ try:
 except Exception as e:
     print(f"⚠️ Compatibility check failed: {e}")
 
-import cv2
-import time
-import requests
-import json
-import os
+import sys, os, importlib, subprocess, time, json, requests
+
+# ✅ Detect if running as compiled .exe (PyInstaller)
+IS_FROZEN = getattr(sys, "frozen", False)
+
+# ✅ Early FFmpeg registration BEFORE importing cv2
+if IS_FROZEN:
+    base_path = getattr(sys, "_MEIPASS", os.getcwd())
+    ffmpeg_dll = os.path.join(base_path, "cv2", "opencv_videoio_ffmpeg4110_64.dll")
+    if os.path.exists(ffmpeg_dll):
+        os.environ["PATH"] = os.path.dirname(ffmpeg_dll) + os.pathsep + os.environ["PATH"]
+        print(f"🎞️ Added FFmpeg DLL early: {ffmpeg_dll}")
+    else:
+        print(f"⚠️ FFmpeg DLL not found at {ffmpeg_dll}")
+else:
+    print("💻 Running in dev mode — using system FFmpeg")
+
+import cv2  # ✅ now OpenCV can detect the FFmpeg backend
 
 # 🧩 Safe threading configuration for MKL/Torch
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -519,9 +532,12 @@ def run_attendance_session(class_meta) -> bool:
 
     cap = cv2.VideoCapture(0, cv2.CAP_MSMF)
     if not cap.isOpened():
+        print("⚠️ MSMF failed — retrying with DirectShow...")
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+    if not cap.isOpened():
         print("❌ Camera not available or FFmpeg not loaded correctly.")
         return False
-
 
     # Camera resolution
     W, H = RESOLUTIONS.get(CAMERA_QUALITY, (1920, 1080))
@@ -532,6 +548,21 @@ def run_attendance_session(class_meta) -> bool:
     actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     print(f"📷 Camera initialized at {actual_w}x{actual_h} (requested {CAMERA_QUALITY})")
+
+    # --- Warm-up phase to ensure valid frames before start ---
+    print("🎥 Warming up camera...")
+    for i in range(10):
+        ok, test_frame = cap.read()
+        if ok and test_frame is not None and hasattr(test_frame, "shape") and test_frame.size > 0:
+            print(f"✅ Warm-up success on frame {i}: {test_frame.shape}")
+            break
+        else:
+            print(f"⚠️ Warm-up frame {i} invalid, retrying...")
+            time.sleep(0.3)
+    else:
+        print("❌ Camera failed to deliver valid frames during warm-up.")
+        cap.release()
+        return False
 
     cv2.destroyAllWindows()
     cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
@@ -587,9 +618,16 @@ def run_attendance_session(class_meta) -> bool:
 
         def safe_detect(f):
             try:
-                if f is None or not hasattr(f, "shape") or f.size == 0:
-                    print("⚠️ Skipping invalid frame in safe_detect()")
+                if f is None:
+                    print("🚫 safe_detect() got None frame")
                     return []
+                if not hasattr(f, "shape"):
+                    print("🚫 Frame missing shape attribute")
+                    return []
+                if f.size == 0:
+                    print(f"🚫 Empty frame with shape {getattr(f, 'shape', None)}")
+                    return []
+                print(f"🖼️ Frame OK: {f.shape}")
                 res = face_app.get(f)
                 return res if isinstance(res, list) else []
             except Exception as e:
