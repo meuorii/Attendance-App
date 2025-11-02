@@ -621,15 +621,29 @@ def run_attendance_session(class_meta) -> bool:
                 if f is None:
                     print("🚫 safe_detect() got None frame")
                     return []
-                if not hasattr(f, "shape"):
-                    print("🚫 Frame missing shape attribute")
+                if not hasattr(f, "shape") or f.size == 0:
+                    print(f"🚫 Invalid frame in safe_detect(): {getattr(f, 'shape', None)}")
                     return []
-                if f.size == 0:
-                    print(f"🚫 Empty frame with shape {getattr(f, 'shape', None)}")
-                    return []
-                print(f"🖼️ Frame OK: {f.shape}")
+
+                # ✅ Ensure frame is contiguous and BGR (InsightFace expects BGR)
+                f = np.ascontiguousarray(f)
+                if f.ndim == 3 and f.shape[2] == 3:
+                    pass  # already BGR
+                elif f.ndim == 3 and f.shape[2] == 4:
+                    f = cv2.cvtColor(f, cv2.COLOR_BGRA2BGR)
+                else:
+                    f = cv2.cvtColor(f, cv2.COLOR_GRAY2BGR)
+
+                # Debug log
+                print(f"🖼️ Frame OK: {f.shape}, dtype={f.dtype}, contiguous={f.flags['C_CONTIGUOUS']}")
+
+                # ✅ Run face detection
                 res = face_app.get(f)
+                if res is None:
+                    print("⚠️ InsightFace returned None result.")
+                    return []
                 return res if isinstance(res, list) else []
+
             except Exception as e:
                 print("⚠️ Face detection internal error:", repr(e))
                 return []
