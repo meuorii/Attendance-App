@@ -73,6 +73,14 @@ import time
 import requests
 import json
 import os
+
+# 🧩 Safe threading configuration for MKL/Torch
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OMP_WAIT_POLICY"] = "PASSIVE"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["OMP_DYNAMIC"] = "FALSE"
+os.environ["MKL_THREADING_LAYER"] = "SEQUENTIAL"
+
 import numpy as np
 import threading
 import torch
@@ -442,6 +450,10 @@ def _iou(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> float:
 # -----------------------------
 # Attendance session (multi-face w/ short tracker)
 # -----------------------------
+def is_valid_frame(frame):
+    """Check if frame is valid before passing to InsightFace."""
+    return frame is not None and hasattr(frame, "shape") and frame.size > 0
+
 def run_attendance_session(class_meta) -> bool:
     global session_active, user_quit_app
     session_active, user_quit_app = True, False
@@ -492,9 +504,24 @@ def run_attendance_session(class_meta) -> bool:
     threading.Thread(target=poll_backend, args=(class_id,), daemon=True).start()
 
     print(f"📸 Attendance started for class {class_id}")
+    # --- Camera initialization (with FFmpeg fix for EXE builds) ---
+    if getattr(sys, 'frozen', False):  # running as .exe
+        base_path = sys._MEIPASS
+        dll_path = os.path.join(base_path, "opencv_videoio_ffmpeg4110_64.dll")
+        if os.path.exists(dll_path):
+            try:
+                cv2.setFFmpegPath(dll_path)
+                print(f"🎞️ FFmpeg DLL registered: {dll_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to register FFmpeg DLL: {e}")
+        else:
+            print(f"⚠️ FFmpeg DLL not found at {dll_path}")
+    else:
+        print("💻 Running in dev mode — system OpenCV handles FFmpeg.")
+
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
-        print("❌ Camera not available.")
+        print("❌ Camera not available or FFmpeg not loaded correctly.")
         return False
 
     # Camera resolution
@@ -549,36 +576,41 @@ def run_attendance_session(class_meta) -> bool:
             fps = 0.9 * fps + 0.1 * (1.0 / dt)
         t_last_fps = now_perf
 
-        # ---------------- Safe async detection ----------------
-        if frame is None or not hasattr(frame, "shape"):
-            print("⚠️ Invalid frame detected — skipping detection.")
+        # ---------------- Safe async detection (improved) ----------------
+        if not is_valid_frame(frame):
+            print("⚠️ Invalid or empty frame — skipping detection.")
             time.sleep(0.05)
             continue
 
         def safe_detect(f):
-            """Wrapper to prevent NoneType crashes inside InsightFace."""
+            """Wrapper to prevent crashes inside InsightFace.get()."""
             try:
-                if f is None or not hasattr(f, "shape"):
+                if not is_valid_frame(f):
                     return []
                 res = face_app.get(f)
-                return res if res is not None else []
+                return res if isinstance(res, list) else []
             except Exception as e:
                 print("⚠️ Face detection internal error:", e)
                 return []
 
+        # Submit new detection if none pending
         if future_faces is None:
-            future_faces = executor.submit(safe_detect, frame.copy())
-
-        if future_faces and future_faces.done():
-            faces = []
             try:
-                faces = future_faces.result() or []
-            except Exception as e:
-                print("⚠️ Face detection error (async):", e)
-                faces = []
-            # Submit next job
-            if frame is not None and hasattr(frame, "shape"):
                 future_faces = executor.submit(safe_detect, frame.copy())
+            except Exception as e:
+                print("⚠️ Detection thread submit error:", e)
+                future_faces = None
+
+        # Collect completed result and re-submit next
+        if future_faces and future_faces.done():
+            try:
+                new_faces = future_faces.result(timeout=2)
+                faces = new_faces if isinstance(new_faces, list) else []
+            except Exception as e:
+                print("⚠️ Face detection async error:", e)
+                faces = []
+            finally:
+                future_faces = None
 
         # Build detections
         detections = []
