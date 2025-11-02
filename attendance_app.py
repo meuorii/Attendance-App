@@ -504,16 +504,14 @@ def run_attendance_session(class_meta) -> bool:
     threading.Thread(target=poll_backend, args=(class_id,), daemon=True).start()
 
     print(f"📸 Attendance started for class {class_id}")
-    # --- Camera initialization (with FFmpeg fix for EXE builds) ---
+   # --- Camera initialization (safe for all OpenCV builds) ---
     if getattr(sys, 'frozen', False):  # running as .exe
         base_path = sys._MEIPASS
         dll_path = os.path.join(base_path, "cv2", "opencv_videoio_ffmpeg4110_64.dll")
         if os.path.exists(dll_path):
-            try:
-                cv2.setFFmpegPath(dll_path)
-                print(f"🎞️ FFmpeg DLL registered: {dll_path}")
-            except Exception as e:
-                print(f"⚠️ Failed to register FFmpeg DLL: {e}")
+            # ✅ Add DLL directory to PATH so OpenCV can auto-load it
+            os.environ["PATH"] += os.pathsep + os.path.dirname(dll_path)
+            print(f"🎞️ FFmpeg DLL path added to PATH: {dll_path}")
         else:
             print(f"⚠️ FFmpeg DLL not found at {dll_path}")
     else:
@@ -523,6 +521,7 @@ def run_attendance_session(class_meta) -> bool:
     if not cap.isOpened():
         print("❌ Camera not available or FFmpeg not loaded correctly.")
         return False
+
 
     # Camera resolution
     W, H = RESOLUTIONS.get(CAMERA_QUALITY, (1920, 1080))
