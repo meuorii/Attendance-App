@@ -166,7 +166,7 @@ torch.set_num_threads(4)
 # -----------------------------
 # Init InsightFace (EXE + DEV Safe Version)
 # -----------------------------
-import sys, os, time
+import sys, os, time, shutil
 import onnxruntime as ort
 from insightface.app import FaceAnalysis
 
@@ -228,12 +228,29 @@ except Exception as e:
     print("❌ InsightFace model load failed:", e)
     face_app = None
 
+# 🩹 Enforce EXE model path to prevent user-cache fallback
+if getattr(sys, 'frozen', False):
+    correct_model_dir = os.path.join(sys._MEIPASS, "insightface", "models", "buffalo_l")
+    user_model_dir = os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l")
+
+    try:
+        os.environ["INSIGHTFACE_HOME"] = correct_model_dir
+        if os.path.exists(correct_model_dir):
+            if not os.path.exists(user_model_dir):
+                shutil.copytree(correct_model_dir, user_model_dir, dirs_exist_ok=True)
+                print(f"🔁 Copied bundled models to {user_model_dir}")
+            else:
+                print(f"📂 Using InsightFace models from EXE path: {correct_model_dir}")
+        else:
+            print(f"⚠️ Bundled InsightFace model directory missing: {correct_model_dir}")
+    except Exception as e:
+        print(f"⚠️ Failed to remap InsightFace model dir: {e}")
+
 # ✅ Verify model health
 if face_app is None:
     print("🚫 InsightFace failed to initialize — face detection will be disabled.")
 else:
     print("🧠 InsightFace engine initialized successfully.\n")
-
 
 def fetch_instructor_config(instructor_id: str):
     """Fetch instructor config from backend and save locally"""
