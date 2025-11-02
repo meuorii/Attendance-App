@@ -205,13 +205,31 @@ ctx_id = -1
 if getattr(sys, 'frozen', False):
     base_path = sys._MEIPASS
     model_dir = os.path.join(base_path, "insightface", "models", "buffalo_l")
+    insightface_home = os.path.join(base_path, "insightface")
 else:
     model_dir = os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l")
+    insightface_home = os.path.join(os.path.expanduser("~"), ".insightface")
 
+# ✅ Set correct environment variable BEFORE initialization
+os.environ["INSIGHTFACE_HOME"] = insightface_home
 print(f"📦 Using InsightFace model directory: {model_dir}")
 
-# ✅ Register model dir for InsightFace
-os.environ["INSIGHTFACE_HOME"] = model_dir
+# 🩹 Copy bundled models if missing (for EXE runtime fallback)
+if getattr(sys, 'frozen', False):
+    correct_model_dir = os.path.join(sys._MEIPASS, "insightface", "models", "buffalo_l")
+    user_model_dir = os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l")
+
+    try:
+        if os.path.exists(correct_model_dir):
+            if not os.path.exists(user_model_dir):
+                shutil.copytree(correct_model_dir, user_model_dir, dirs_exist_ok=True)
+                print(f"🔁 Copied bundled models to {user_model_dir}")
+            else:
+                print(f"📂 Using InsightFace models from EXE path: {correct_model_dir}")
+        else:
+            print(f"⚠️ Bundled InsightFace model directory missing: {correct_model_dir}")
+    except Exception as e:
+        print(f"⚠️ Failed to remap InsightFace model dir: {e}")
 
 # ✅ Initialize InsightFace safely with diagnostics
 try:
@@ -227,24 +245,6 @@ except TypeError:
 except Exception as e:
     print("❌ InsightFace model load failed:", e)
     face_app = None
-
-# 🩹 Enforce EXE model path to prevent user-cache fallback
-if getattr(sys, 'frozen', False):
-    correct_model_dir = os.path.join(sys._MEIPASS, "insightface", "models", "buffalo_l")
-    user_model_dir = os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l")
-
-    try:
-        os.environ["INSIGHTFACE_HOME"] = correct_model_dir
-        if os.path.exists(correct_model_dir):
-            if not os.path.exists(user_model_dir):
-                shutil.copytree(correct_model_dir, user_model_dir, dirs_exist_ok=True)
-                print(f"🔁 Copied bundled models to {user_model_dir}")
-            else:
-                print(f"📂 Using InsightFace models from EXE path: {correct_model_dir}")
-        else:
-            print(f"⚠️ Bundled InsightFace model directory missing: {correct_model_dir}")
-    except Exception as e:
-        print(f"⚠️ Failed to remap InsightFace model dir: {e}")
 
 # ✅ Verify model health
 if face_app is None:
