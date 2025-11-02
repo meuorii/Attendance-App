@@ -517,7 +517,7 @@ def run_attendance_session(class_meta) -> bool:
     else:
         print("💻 Running in dev mode — system OpenCV handles FFmpeg.")
 
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(0, cv2.CAP_MSMF)
     if not cap.isOpened():
         print("❌ Camera not available or FFmpeg not loaded correctly.")
         return False
@@ -547,9 +547,13 @@ def run_attendance_session(class_meta) -> bool:
     def camera_thread():
         while session_active and not user_quit_app:
             ok, f = cap.read()
-            if not ok or f is None:
-                print("⚠️ Camera read failed, retrying...")
+            if not ok or f is None or not hasattr(f, "shape"):
+                print("⚠️ Camera read returned empty or invalid frame — skipping...")
                 time.sleep(0.1)
+                continue
+
+            if f.size == 0 or f.shape[0] < 100 or f.shape[1] < 100:
+                print("⚠️ Frame too small or corrupt — skipping...")
                 continue
             frame_queue.append(f)
 
@@ -582,14 +586,14 @@ def run_attendance_session(class_meta) -> bool:
             continue
 
         def safe_detect(f):
-            """Wrapper to prevent crashes inside InsightFace.get()."""
             try:
-                if not is_valid_frame(f):
+                if f is None or not hasattr(f, "shape") or f.size == 0:
+                    print("⚠️ Skipping invalid frame in safe_detect()")
                     return []
                 res = face_app.get(f)
                 return res if isinstance(res, list) else []
             except Exception as e:
-                print("⚠️ Face detection internal error:", e)
+                print("⚠️ Face detection internal error:", repr(e))
                 return []
 
         # Submit new detection if none pending
