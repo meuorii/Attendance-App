@@ -507,7 +507,7 @@ def run_attendance_session(class_meta) -> bool:
     # --- Camera initialization (with FFmpeg fix for EXE builds) ---
     if getattr(sys, 'frozen', False):  # running as .exe
         base_path = sys._MEIPASS
-        dll_path = os.path.join(base_path, "opencv_videoio_ffmpeg4110_64.dll")
+        dll_path = os.path.join(base_path, "cv2", "opencv_videoio_ffmpeg4110_64.dll")
         if os.path.exists(dll_path):
             try:
                 cv2.setFFmpegPath(dll_path)
