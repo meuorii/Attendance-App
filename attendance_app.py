@@ -166,7 +166,7 @@ torch.set_num_threads(4)
 # -----------------------------
 # Init InsightFace (EXE + DEV Safe Version)
 # -----------------------------
-import sys, os, time, shutil
+import sys, os, time, shutil, cv2
 import onnxruntime as ort
 from insightface.app import FaceAnalysis
 
@@ -251,6 +251,23 @@ if face_app is None:
     print("🚫 InsightFace failed to initialize — face detection will be disabled.")
 else:
     print("🧠 InsightFace engine initialized successfully.\n")
+
+    # 🔍 Quick self-test — capture one frame and verify detection
+    print("🎥 Running one-frame face detection test...")
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret and frame is not None:
+            faces = face_app.get(frame)
+            if faces and len(faces) > 0:
+                print(f"✅ Face detection test passed — detected {len(faces)} face(s).")
+            else:
+                print("⚠️ Face detection test returned 0 faces. Check lighting or camera view.")
+        else:
+            print("⚠️ Could not read test frame from camera.")
+        cap.release()
+    else:
+        print("❌ Camera not available for self-test.")
 
 def fetch_instructor_config(instructor_id: str):
     """Fetch instructor config from backend and save locally"""
