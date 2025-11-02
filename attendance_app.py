@@ -164,43 +164,75 @@ print("🧠 Running on CPU mode (real-time smooth detection)")
 torch.set_num_threads(4)
 
 # -----------------------------
-# Init InsightFace (fixed for both EXE and DEV)
+# Init InsightFace (EXE + DEV Safe Version)
 # -----------------------------
-import sys, os
+import sys, os, time
+import onnxruntime as ort
 from insightface.app import FaceAnalysis
 
-cuda_ok = False
-providers = ["CPUExecutionProvider"]
-ctx_id = -1
-print("🧠 Running on CPU mode (real-time smooth detection)")
+print("🧠 Initializing InsightFace Engine")
 
-# ✅ Detect if running as compiled EXE or normal Python
+# ✅ Add ONNXRuntime DLL path for EXE builds
 if getattr(sys, 'frozen', False):
-    # When compiled: models are bundled in dist/insightface/models
+    base_path = sys._MEIPASS
+    ort_dir = os.path.join(base_path, "onnxruntime")
+    if os.path.isdir(ort_dir):
+        os.environ["PATH"] = ort_dir + os.pathsep + os.environ["PATH"]
+        print(f"🧩 Added ONNXRuntime path: {ort_dir}")
+    else:
+        print(f"⚠️ ONNXRuntime folder not found in _internal path: {ort_dir}")
+else:
+    print("💻 Running in dev mode (system ONNXRuntime handles DLLs).")
+
+# ✅ Check ONNX Runtime availability
+try:
+    print(f"🧩 ONNX Runtime version: {ort.__version__}")
+    providers = ort.get_available_providers()
+    print(f"💡 Available providers: {providers}")
+    if "CPUExecutionProvider" not in providers:
+        print("⚠️ CPUExecutionProvider not found — models may fail to load.")
+    else:
+        print("✅ CPUExecutionProvider ready.")
+except Exception as e:
+    print(f"❌ ONNX Runtime failed to initialize: {e}")
+    providers = ["CPUExecutionProvider"]
+
+# ✅ Default: run on CPU (ctx_id=-1)
+cuda_ok = False
+ctx_id = -1
+
+# ✅ Detect environment (EXE vs. Dev)
+if getattr(sys, 'frozen', False):
     base_path = sys._MEIPASS
     model_dir = os.path.join(base_path, "insightface", "models", "buffalo_l")
 else:
-    # When running in your dev environment
     model_dir = os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l")
 
 print(f"📦 Using InsightFace model directory: {model_dir}")
 
-# ✅ Fix: Use environment variable instead of unsupported `root` arg
+# ✅ Register model dir for InsightFace
 os.environ["INSIGHTFACE_HOME"] = model_dir
 
-# Initialize InsightFace safely (0.7.x compatible)
+# ✅ Initialize InsightFace safely with diagnostics
 try:
-    face_app = FaceAnalysis(name="buffalo_l", providers=providers)
+    face_app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+    print("🕐 Preparing model (320x320)...")
     face_app.prepare(ctx_id=ctx_id, det_size=(320, 320))
     print("✅ InsightFace models loaded:", list(face_app.models.keys()))
 except TypeError:
-    # Fallback for newer versions (0.9+)
-    print("⚠️ Retrying with new InsightFace API (root parameter supported)...")
-    face_app = FaceAnalysis(name="buffalo_l", providers=providers)
+    print("⚠️ Retrying with newer InsightFace API (root parameter supported)...")
+    face_app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
     face_app.prepare(ctx_id=ctx_id, det_size=(320, 320), root=model_dir)
     print("✅ InsightFace models loaded:", list(face_app.models.keys()))
 except Exception as e:
     print("❌ InsightFace model load failed:", e)
+    face_app = None
+
+# ✅ Verify model health
+if face_app is None:
+    print("🚫 InsightFace failed to initialize — face detection will be disabled.")
+else:
+    print("🧠 InsightFace engine initialized successfully.\n")
 
 
 def fetch_instructor_config(instructor_id: str):
