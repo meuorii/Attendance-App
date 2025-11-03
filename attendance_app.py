@@ -240,7 +240,7 @@ try:
     else:
         print(f"⚠️ Model directory not found: {model_dir}")
     print("🕐 Preparing model (320x320)...")
-    face_app.prepare(ctx_id=ctx_id, det_size=(320, 320), root=model_dir)
+    face_app.prepare(ctx_id=ctx_id, det_size=(320, 320))
     print("✅ InsightFace models loaded:", list(face_app.models.keys()))
     # 🧪 Quick face-detection self-test
     try:
