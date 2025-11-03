@@ -244,9 +244,11 @@ try:
     print("✅ InsightFace models loaded:", list(face_app.models.keys()))
     # 🧪 Quick face-detection self-test
     try:
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        time.sleep(1.0)  # allow camera warm-up
         ret, test = cap.read()
         cap.release()
+
         if ret and test is not None:
             result = face_app.get(test)
             if result is None or len(result) == 0:
