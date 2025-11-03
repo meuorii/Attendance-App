@@ -234,9 +234,29 @@ if getattr(sys, 'frozen', False):
 # ✅ Initialize InsightFace safely with diagnostics
 try:
     face_app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+    # 🩹 Check and enforce correct model directory
+    if os.path.exists(model_dir):
+        print(f"📂 Forcing InsightFace to load models from {model_dir}")
+    else:
+        print(f"⚠️ Model directory not found: {model_dir}")
     print("🕐 Preparing model (320x320)...")
-    face_app.prepare(ctx_id=ctx_id, det_size=(320, 320))
+    face_app.prepare(ctx_id=ctx_id, det_size=(320, 320), root=model_dir)
     print("✅ InsightFace models loaded:", list(face_app.models.keys()))
+    # 🧪 Quick face-detection self-test
+    try:
+        cap = cv2.VideoCapture(0)
+        ret, test = cap.read()
+        cap.release()
+        if ret and test is not None:
+            result = face_app.get(test)
+            if result is None or len(result) == 0:
+                print("⚠️ Self-test: No faces detected. Check lighting or model path.")
+            else:
+                print(f"✅ Self-test: Detected {len(result)} face(s).")
+        else:
+            print("⚠️ Self-test: Could not capture a valid frame from camera.")
+    except Exception as e:
+        print("⚠️ Self-test failed:", e)
 except TypeError:
     print("⚠️ Retrying with newer InsightFace API (root parameter supported)...")
     face_app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
@@ -258,16 +278,24 @@ else:
     if cap.isOpened():
         ret, frame = cap.read()
         if ret and frame is not None:
-            faces = face_app.get(frame)
-            if faces and len(faces) > 0:
-                print(f"✅ Face detection test passed — detected {len(faces)} face(s).")
-            else:
-                print("⚠️ Face detection test returned 0 faces. Check lighting or camera view.")
+            try:
+                faces = face_app.get(frame)
+                if faces is None:
+                    print("⚠️ Face detection test failed — model returned None (no output).")
+                elif len(faces) > 0:
+                    print(f"✅ Face detection test passed — detected {len(faces)} face(s).")
+                else:
+                    print("⚠️ Face detection test found 0 faces. Try brighter lighting or adjust camera angle.")
+            except Exception as e:
+                print(f"⚠️ Face detection test encountered error: {e}")
+            finally:
+                cap.release()
         else:
-            print("⚠️ Could not read test frame from camera.")
-        cap.release()
+            print("⚠️ Could not read a valid frame from camera.")
+            cap.release()
     else:
         print("❌ Camera not available for self-test.")
+
 
 def fetch_instructor_config(instructor_id: str):
     """Fetch instructor config from backend and save locally"""
@@ -666,6 +694,11 @@ def run_attendance_session(class_meta) -> bool:
 
         frame = frame_queue.popleft()
 
+        # 🧩 Prevent crashing on invalid or None frames
+        if frame is None or not hasattr(frame, "shape") or frame.size == 0:
+            print("⚠️ Skipping invalid frame in main loop.")
+            continue
+        
         H, W = frame.shape[:2]
         frame_count += 1
 
@@ -699,6 +732,8 @@ def run_attendance_session(class_meta) -> bool:
                     f = cv2.cvtColor(f, cv2.COLOR_BGRA2BGR)
                 else:
                     f = cv2.cvtColor(f, cv2.COLOR_GRAY2BGR)
+
+                f = f.astype(np.uint8)
 
                 # Debug log
                 print(f"🖼️ Frame OK: {f.shape}, dtype={f.dtype}, contiguous={f.flags['C_CONTIGUOUS']}")
