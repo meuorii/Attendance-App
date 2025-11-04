@@ -86,6 +86,7 @@ else:
     print("💻 Running in dev mode — using system FFmpeg")
 
 import cv2  # ✅ now OpenCV can detect the FFmpeg backend
+import ctypes
 
 # 🧩 Safe threading configuration for MKL/Torch
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -118,7 +119,7 @@ CONFIG_PATH = "config.json"
 FACE_API_BASE = "https://frams-server-production.up.railway.app/api/face"
 
 POLL_INTERVAL = 5
-MATCH_THRESH  = 0.55
+MATCH_THRESH  = 0.57
 SKIP_FRAMES   = 2
 PAD_RATIO     = 0.05
 AS_THRESHOLD  = 0.65
@@ -662,6 +663,29 @@ def run_attendance_session(class_meta) -> bool:
 
     cv2.destroyAllWindows()
     cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
+
+    # 🪄 Apply custom CCIT window icon
+    icon_path = os.path.join(os.path.dirname(__file__), "ccit-logo.ico")
+    if os.path.exists(icon_path):
+        try:
+            hwnd = ctypes.windll.user32.FindWindowW(None, WIN_NAME)
+            if hwnd:
+                # 0x80 = WM_SETICON, 1 = ICON_BIG
+                ctypes.windll.user32.SendMessageW(
+                    hwnd,
+                    0x80,
+                    1,
+                    ctypes.windll.user32.LoadImageW(
+                        0, icon_path, 1, 0, 0, 0x10
+                    ),
+                )
+                print(f"🖼️ Custom window icon applied: {icon_path}")
+            else:
+                print("⚠️ Could not find window handle for icon assignment.")
+        except Exception as e:
+            print(f"⚠️ Failed to set custom icon: {e}")
+    else:
+        print("⚠️ ccit-logo.ico not found, skipping custom icon.")
 
     # ---------------- Threaded capture ----------------
     from collections import deque
